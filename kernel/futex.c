@@ -2750,6 +2750,30 @@ retry:
 	if (!signal_pending(current))
 		goto retry;
 
+	if (to) {
+		struct hrtimer *timer = &to->timer;
+		struct hrtimer_clock_base *clock_base = timer->base;
+		struct timerqueue_node *next = clock_base->active.next;
+		struct rb_node *n;
+
+		printk("hrtimer=%p, state=0x%x, expires=%lld, node=%p\n", timer, timer->state, timer->node.expires, &timer->node);
+		printk("clock_base=%p index=%u clockid=%u, active.next=%p, active.next.expires=%lld\n",
+				clock_base, clock_base->index, clock_base->clockid, next, next ? next->expires : 1);
+		printk("Timer queue from head->next\n");
+		printk("========\n");
+		do {
+			timer = container_of(next, struct hrtimer, node);
+			printk("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
+		} while ((next = timerqueue_iterate_next(next)));
+		printk("Timer queue from rbtree\n");
+		printk("========\n");
+		for (n = rb_first(&clock_base->active.head); n != NULL; n = rb_next(n)) {
+			next = rb_entry(n, struct timerqueue_node, node);
+			timer = container_of(next, struct hrtimer, node);
+			printk("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
+		}
+	}
+
 	ret = -ERESTARTSYS;
 	if (!abs_time)
 		goto out;
