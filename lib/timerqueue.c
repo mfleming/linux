@@ -13,6 +13,41 @@
 #include <linux/timerqueue.h>
 #include <linux/rbtree.h>
 #include <linux/export.h>
+#include <linux/sched/mm.h>
+
+static inline bool rbtree_mismatch(struct timerqueue_head *head)
+{
+	struct timerqueue_node *old_next, *new_next;
+	struct rb_node *n;
+	bool mismatch;
+
+	old_next = head->next;
+	n = rb_first(&head->head);
+	new_next = rb_entry(n, struct timerqueue_node, node);
+
+	mismatch = old_next != new_next;
+	if (mismatch) {
+		struct hrtimer *timer;
+		struct timerqueue_node *next = old_next;
+		printk("%d: %p != %p (expires=%lld, %lld)\n", current->pid, old_next, new_next, old_next->expires, new_next->expires);
+		printk("Timer queue from head->next\n");
+		printk("========\n");
+		do {
+			timer = container_of(next, struct hrtimer, node);
+			printk("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
+		} while ((next = timerqueue_iterate_next(next)));
+		printk("Timer queue from rbtree\n");
+		printk("========\n");
+		for (n = rb_first(&head->head); n != NULL; n = rb_next(n)) {
+			next = rb_entry(n, struct timerqueue_node, node);
+			timer = container_of(next, struct hrtimer, node);
+			printk("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
+		}
+
+	}
+
+	return mismatch;
+}
 
 /**
  * timerqueue_add - Adds timer to timerqueue.
@@ -46,8 +81,10 @@ bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
 
 	if (!head->next || node->expires < head->next->expires) {
 		head->next = node;
+		WARN_ON_ONCE(rbtree_mismatch(head));
 		return true;
 	}
+	WARN_ON_ONCE(rbtree_mismatch(head));
 	return false;
 }
 EXPORT_SYMBOL_GPL(timerqueue_add);
@@ -73,6 +110,7 @@ bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node)
 	}
 	rb_erase(&node->node, &head->head);
 	RB_CLEAR_NODE(&node->node);
+	WARN_ON_ONCE(rbtree_mismatch(head));
 	return head->next != NULL;
 }
 EXPORT_SYMBOL_GPL(timerqueue_del);
