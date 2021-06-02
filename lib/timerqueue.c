@@ -29,19 +29,19 @@ static inline bool rbtree_mismatch(struct timerqueue_head *head)
 	if (mismatch) {
 		struct hrtimer *timer;
 		struct timerqueue_node *next = old_next;
-		printk("%d: %p != %p (expires=%lld, %lld)\n", current->pid, old_next, new_next, old_next->expires, new_next->expires);
-		printk("Timer queue from head->next\n");
-		printk("========\n");
+		printk_once("%d: %p != %p (expires=%lld, %lld)\n", current->pid, old_next, new_next, old_next->expires, new_next->expires);
+		printk_once("Timer queue from head->next\n");
+		printk_once("========\n");
 		do {
 			timer = container_of(next, struct hrtimer, node);
-			printk("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
+			printk_once("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
 		} while ((next = timerqueue_iterate_next(next)));
-		printk("Timer queue from rbtree\n");
-		printk("========\n");
+		printk_once("Timer queue from rbtree\n");
+		printk_once("========\n");
 		for (n = rb_first(&head->head); n != NULL; n = rb_next(n)) {
 			next = rb_entry(n, struct timerqueue_node, node);
 			timer = container_of(next, struct hrtimer, node);
-			printk("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
+			printk_once("node=%p, expires=%lld, state=0x%x\n", next, next->expires, timer->state);
 		}
 
 	}
