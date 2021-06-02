@@ -49,6 +49,66 @@ static inline bool rbtree_mismatch(struct timerqueue_head *head)
 	return mismatch;
 }
 
+/*
+ * Validate that every entry in the rbtree is in the correct place.
+ */
+static inline bool bad_rbtree(struct timerqueue_head *head, struct timerqueue_node *node)
+{
+	struct timerqueue_node *next;
+	unsigned long last_expiry = 0;
+	struct rb_node *n;
+	bool bad = false;
+
+	for (n = rb_first(&head->head); n != NULL; n = rb_next(n)) {
+		next = rb_entry(n, struct timerqueue_node, node);
+		if (next->expires < last_expiry) {
+			bad = true;
+			break;
+		}
+		last_expiry = next->expires;
+	}
+
+	return bad;
+}
+
+static inline void print_rbtree(struct timerqueue_head *head, struct timerqueue_node *node)
+{
+	struct hrtimer *last_timer, *next_timer;
+	struct timerqueue_node *next, *last;
+	unsigned long last_expiry = 0;
+	struct rb_node *n;
+	bool bad = false;
+
+	last = NULL;
+	for (n = rb_first(&head->head); n != NULL; n = rb_next(n)) {
+		next = rb_entry(n, struct timerqueue_node, node);
+		if (next->expires < last_expiry) {
+			bad = true;
+			break;
+		}
+		last = next;
+		last_expiry = next->expires;
+	}
+
+	if (!bad)
+		return;
+
+	last_timer = container_of(last, struct hrtimer, node);
+	next_timer = container_of(next, struct hrtimer, node);
+	printk("%d: was adding node=%p\n", current->pid, node);
+	printk("%d: found node in wrong place last=%p, next=%p (expires %lld, %lld)\n",
+		current->pid, last, next, last->expires, next->expires);
+	printk("%d: last timer=%p function=%pS, next=%p timer function=%pS\n",
+		current->pid, last_timer, last_timer->function, next_timer, next_timer->function);
+
+	printk("Printing rbtree\n=========\n");
+	for (n = rb_first(&head->head); n != NULL; n = rb_next(n)) {
+		next = rb_entry(n, struct timerqueue_node, node);
+		next_timer = container_of(next, struct hrtimer, node);
+		printk("node=%p, expires=%lld, function=%pS\n", next, next->expires, next_timer->function);
+	}
+}
+
 /**
  * timerqueue_add - Adds timer to timerqueue.
  *
@@ -68,6 +128,9 @@ bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
 	/* Make sure we don't add nodes that are already added */
 	WARN_ON_ONCE(!RB_EMPTY_NODE(&node->node));
 
+	if (WARN_ON_ONCE(bad_rbtree(head, node)))
+		print_rbtree(head, node);
+
 	while (*p) {
 		parent = *p;
 		ptr = rb_entry(parent, struct timerqueue_node, node);
@@ -81,9 +144,14 @@ bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
 
 	if (!head->next || node->expires < head->next->expires) {
 		head->next = node;
+		if (WARN_ON_ONCE(bad_rbtree(head, node)))
+			print_rbtree(head, node);
+
 		WARN_ON_ONCE(rbtree_mismatch(head));
 		return true;
 	}
+	if (WARN_ON_ONCE(bad_rbtree(head, node)))
+		print_rbtree(head, node);
 	WARN_ON_ONCE(rbtree_mismatch(head));
 	return false;
 }
@@ -102,6 +170,9 @@ bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node)
 {
 	WARN_ON_ONCE(RB_EMPTY_NODE(&node->node));
 
+	if (WARN_ON_ONCE(bad_rbtree(head, node)))
+		print_rbtree(head, node);
+
 	/* update next pointer */
 	if (head->next == node) {
 		struct rb_node *rbn = rb_next(&node->node);
@@ -110,6 +181,8 @@ bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node)
 	}
 	rb_erase(&node->node, &head->head);
 	RB_CLEAR_NODE(&node->node);
+	if (WARN_ON_ONCE(bad_rbtree(head, node)))
+		print_rbtree(head, node);
 	WARN_ON_ONCE(rbtree_mismatch(head));
 	return head->next != NULL;
 }
