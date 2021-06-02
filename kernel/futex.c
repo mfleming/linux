@@ -2756,9 +2756,13 @@ retry:
 		struct timerqueue_node *next = clock_base->active.next;
 		struct rb_node *n;
 
-		printk("hrtimer=%p, state=0x%x, expires=%lld, node=%p\n", timer, timer->state, timer->node.expires, &timer->node);
-		printk("clock_base=%p index=%u clockid=%u, active.next=%p, active.next.expires=%lld\n",
-				clock_base, clock_base->index, clock_base->clockid, next, next ? next->expires : 1);
+		printk("%d: hrtimer=%p, state=0x%x, expires=%lld, node=%p\n", current->pid, timer, timer->state, timer->node.expires, &timer->node);
+		printk("%d: clock_base=%p\n",
+				current->pid, clock_base);
+		printk("%d: clock_base index=%u clockid=%u\n",
+				current->pid, clock_base->index, clock_base->clockid);
+		printk("%d: active.next=%p, active.next.expires=%lld\n",
+				current->pid, next, next ? next->expires : 1);
 		printk("Timer queue from head->next\n");
 		printk("========\n");
 		do {
