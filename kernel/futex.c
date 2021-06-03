@@ -2750,7 +2750,7 @@ retry:
 	if (!signal_pending(current))
 		goto retry;
 
-	if (to) {
+	if (to && 0) {
 		struct hrtimer *timer = &to->timer;
 		struct hrtimer_clock_base *clock_base = timer->base;
 		struct timerqueue_node *next = clock_base->active.next;

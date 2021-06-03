@@ -947,6 +947,7 @@ static int enqueue_hrtimer(struct hrtimer *timer,
 
 	timer->state = HRTIMER_STATE_ENQUEUED;
 
+	WARN_ON_ONCE(!raw_spin_is_locked(&base->cpu_base->lock));
 	return timerqueue_add(&base->active, &timer->node);
 }
 
@@ -971,6 +972,7 @@ static void __remove_hrtimer(struct hrtimer *timer,
 	if (!(state & HRTIMER_STATE_ENQUEUED))
 		return;
 
+	WARN_ON_ONCE(!raw_spin_is_locked(&base->cpu_base->lock));
 	if (!timerqueue_del(&base->active, &timer->node))
 		cpu_base->active_bases &= ~(1 << base->index);
 
