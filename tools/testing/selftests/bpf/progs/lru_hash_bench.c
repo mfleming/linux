@@ -10,7 +10,6 @@
 
 #define NR_LOOPS 10000
 #define DATA_SIZE 64
-#define MAX_ENTRIES 1024
 
 char _license[] SEC("license") = "GPL";
 
@@ -19,21 +18,23 @@ struct buffer {
 };
 
 struct {
-	//__uint(type, BPF_MAP_TYPE_LRU_PERCPU_HASH);
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, int);
 	__type(value, struct buffer);
-	__uint(max_entries, MAX_ENTRIES);
-	//__uint(map_flags, BPF_F_NO_COMMON_LRU);
+	__uint(max_entries, 1);
 } lru_hash SEC(".maps");
 
+/* Input (written by userspace) */
+__u32 max_entries;
+
+/* Output (read by userspace) */
 long duration_ns;
 long hits;
 
 static int update(__u32 index, int *retval)
 {
 	struct buffer val = {};
-	int key = index % MAX_ENTRIES;
+	int key = index % max_entries;
 	int err;
 
 	err = bpf_map_update_elem(&lru_hash, &key, &val, BPF_ANY);

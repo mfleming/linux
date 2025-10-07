@@ -12,12 +12,38 @@ static struct ctx {
 	struct lru_hash_bench *bench;
 } ctx;
 
+static struct {
+	__u32 nr_entries;
+} args = {
+	.nr_entries = 1024,
+};
+
+enum {
+	ARG_NR_ENTRIES = 10000,
+};
+
 static const struct argp_option opts[] = {
+	{"nr_entries", ARG_NR_ENTRIES, "NR_ENTRIES", 0,
+	  "Maximum number of entries in the LRU hash map" },
 	{},
 };
 
 static error_t lru_hash_parse_arg(int key, char *arg, struct argp_state *state)
 {
+	long ret;
+
+	switch (key) {
+	case ARG_NR_ENTRIES:
+		ret = strtoul(arg, NULL, 10);
+		if (ret < 1 || ret > UINT_MAX) {
+			fprintf(stderr, "Invalid nr_entries count");
+			argp_usage(state);
+		}
+		args.nr_entries = ret;
+		break;
+	default:
+		return ARGP_ERR_UNKNOWN;
+	}
 	return 0;
 }
 
@@ -32,9 +58,20 @@ static void lru_hash_validate(void)
 
 static void lru_hash_setup(void)
 {
-	ctx.bench = lru_hash_bench__open_and_load();
+	int ret;
+
+	ctx.bench = lru_hash_bench__open();
 	if (!ctx.bench) {
 		fprintf(stderr, "failed to open skeleton\n");
+		exit(1);
+	}
+
+	ctx.bench->bss->max_entries = args.nr_entries;
+	bpf_map__set_max_entries(ctx.bench->maps.lru_hash, args.nr_entries);
+
+	ret = lru_hash_bench__load(ctx.bench);
+	if (ret) {
+		fprintf(stderr, "failed to load skeleton\n");
 		exit(1);
 	}
 
@@ -42,6 +79,7 @@ static void lru_hash_setup(void)
 		fprintf(stderr, "failed to attach skeleton\n");
 		exit(1);
 	}
+
 }
 
 static void lru_hash_measure(struct bench_res *res)
