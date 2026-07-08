@@ -2935,6 +2935,7 @@ void stack_depot_put(depot_stack_handle_t handle)
 	 */
 	if (WARN(!stack, "corrupt handle or unbalanced stack_depot_put()"))
 		return;
+
 	if (WARN_ON_ONCE(!(stack->flags & STACK_DEPOT_FLAG_GET)))
 		return;
 	if (refcount_dec_and_test(&stack->count))
