@@ -49,7 +49,7 @@ static void stackdepot_fetch_into_roundtrip(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, fetched[ARRAY_SIZE(entries)], expected_tail);
 }
 
-static void stackdepot_fetch_into_rejects_bad_inputs(struct kunit *test)
+static void stackdepot_fetch_into_rejects_missing_or_short_stack(struct kunit *test)
 {
 	unsigned long entries[] = {
 		0x1234567800110000UL,
@@ -77,14 +77,6 @@ static void stackdepot_fetch_into_rejects_bad_inputs(struct kunit *test)
 
 	nr_entries = stack_depot_fetch_into(0, NULL, 0);
 	KUNIT_EXPECT_EQ(test, nr_entries, 0U);
-
-	nr_entries = stack_depot_fetch_into(handle, NULL, ARRAY_SIZE(fetched));
-	KUNIT_EXPECT_EQ(test, nr_entries, 0U);
-	KUNIT_EXPECT_MEMEQ(test, fetched, expected, sizeof(expected));
-
-	nr_entries = stack_depot_fetch_into(handle, fetched, 0);
-	KUNIT_EXPECT_EQ(test, nr_entries, 0U);
-	KUNIT_EXPECT_MEMEQ(test, fetched, expected, sizeof(expected));
 
 	nr_entries = stack_depot_fetch_into(handle, fetched,
 					    ARRAY_SIZE(fetched) - 1);
@@ -357,7 +349,7 @@ static void stackdepot_frame_arm64(struct kunit *test)
 
 static struct kunit_case stackdepot_test_cases[] = {
 	KUNIT_CASE(stackdepot_fetch_into_roundtrip),
-	KUNIT_CASE(stackdepot_fetch_into_rejects_bad_inputs),
+	KUNIT_CASE(stackdepot_fetch_into_rejects_missing_or_short_stack),
 	KUNIT_CASE(stackdepot_countable_flag_roundtrip),
 	KUNIT_CASE(stackdepot_save_flags_public),
 	KUNIT_CASE(stackdepot_snprint_public),

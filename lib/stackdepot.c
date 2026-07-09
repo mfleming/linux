@@ -238,13 +238,13 @@ static depot_stack_handle_t __stack_depot_trie_handle(u32 leaf_id)
 	u32 pool_delta;
 	u32 index;
 
-	if (!leaf_id || leaf_id > trie_side_table_max_id)
+	if (WARN_ON_ONCE(!leaf_id || leaf_id > trie_side_table_max_id))
 		return 0;
 
 	index = leaf_id - 1;
 	pool_delta = index >> DEPOT_OFFSET_BITS;
 	pool_index_plus_1 = (u64)stack_max_pools + 1 + pool_delta;
-	if (pool_index_plus_1 >= DEPOT_POOL_INDEX_MASK)
+	if (WARN_ON_ONCE(pool_index_plus_1 >= DEPOT_POOL_INDEX_MASK))
 		return 0;
 
 	parts.pool_index_plus_1 = pool_index_plus_1;
@@ -2812,6 +2812,8 @@ __stack_depot_trie_fetch_into(const struct stack_depot_trie_node *leaf,
 	total = 0;
 	for (node = leaf; node; node = trie_load_parent(node))
 		total += node->run.nr_entries;
+	if (WARN_ON_ONCE(!total))
+		return 0;
 	if (max_entries < total)
 		return 0;
 
@@ -2840,7 +2842,7 @@ __stack_depot_trie_fetch_handle_into(depot_stack_handle_t handle,
 	u32 leaf_id;
 	unsigned int nr_entries;
 
-	if (!handle || !entries || !max_entries)
+	if (!handle)
 		return 0;
 
 	leaf_id = __stack_depot_trie_leaf_id(handle);
@@ -2898,9 +2900,11 @@ unsigned int stack_depot_fetch_into(depot_stack_handle_t handle,
 	struct stack_record *stack;
 	unsigned int nr_entries;
 
-	if (!handle || !entries || !max_entries)
+	if (!handle)
 		return 0;
 	if (stack_depot_disabled)
+		return 0;
+	if (WARN_ON_ONCE(!max_entries))
 		return 0;
 	if (__stack_depot_trie_leaf_id(handle))
 		return __stack_depot_trie_fetch_handle_into(handle, entries,
@@ -2910,7 +2914,9 @@ unsigned int stack_depot_fetch_into(depot_stack_handle_t handle,
 	if (!stack)
 		return 0;
 	nr_entries = stack->size;
-	if (!nr_entries || nr_entries > max_entries)
+	if (WARN_ON_ONCE(!nr_entries))
+		return 0;
+	if (nr_entries > max_entries)
 		return 0;
 
 	memcpy(entries, stack->entries, nr_entries * sizeof(*entries));

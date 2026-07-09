@@ -233,6 +233,9 @@ unsigned int stack_depot_fetch(depot_stack_handle_t handle,
  * is returned. If more frames are stored than @max_entries, the copy is skipped
  * entirely and 0 is returned.
  *
+ * Passing a NULL @entries buffer or zero @max_entries for a valid @handle is
+ * invalid. Callers must provide storage for @max_entries frames.
+ *
  * Callers should size @entries to match the save-side stack depth cap (for
  * example, %CONFIG_STACKDEPOT_MAX_FRAMES or the local stack_trace_save() limit)
  * when losing diagnostics on an undersized buffer would be surprising.
@@ -246,9 +249,8 @@ unsigned int stack_depot_fetch(depot_stack_handle_t handle,
  * Callers must not call stack_depot_put() on persistent handles.
  * Racing this helper with stack_depot_put() on the same handle is invalid.
  *
- * Return: Number of frames copied, 0 if @entries is NULL, @max_entries is 0,
- * @handle is 0 or invalid, stack depot is disabled, or @max_entries is less
- * than the number of stored frames.
+ * Return: Number of frames copied, 0 if @handle is 0 or invalid, stack depot is
+ * disabled, or @max_entries is less than the number of stored frames.
  */
 unsigned int stack_depot_fetch_into(depot_stack_handle_t handle,
 				    unsigned long *entries,
