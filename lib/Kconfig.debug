@@ -2709,6 +2709,7 @@ config RESOURCE_KUNIT_TEST
 config STACKDEPOT_KUNIT_TEST
 	bool "KUnit test for stack depot" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y && STACKDEPOT
+	depends on STACKDEPOT_MAX_FRAMES >= 3
 	default KUNIT_ALL_TESTS
 	help
 	  Enable this option to test stack depot API behavior at boot.

@@ -22,13 +22,13 @@ static inline unsigned long stackdepot_arm64_frame(long offset)
 static void stackdepot_fetch_into_roundtrip(struct kunit *test)
 {
 	unsigned long entries[] = {
-		0x1234567800010000UL,
-		0x1234567800020000UL,
-		0x1234567800030000UL,
+		0x101000UL,
+		0x102000UL,
+		0x103000UL,
 	};
 	unsigned long exact[ARRAY_SIZE(entries)] = {};
 	unsigned long fetched[ARRAY_SIZE(entries) + 1] = {
-		[ARRAY_SIZE(entries)] = 0xa5a5a5a5a5a5a5a5UL,
+		[ARRAY_SIZE(entries)] = 0xa5a5a5a5UL,
 	};
 	unsigned long expected_tail = fetched[ARRAY_SIZE(entries)];
 	depot_stack_handle_t handle;
@@ -52,14 +52,14 @@ static void stackdepot_fetch_into_roundtrip(struct kunit *test)
 static void stackdepot_fetch_into_rejects_missing_or_short_stack(struct kunit *test)
 {
 	unsigned long entries[] = {
-		0x1234567800110000UL,
-		0x1234567800120000UL,
-		0x1234567800130000UL,
+		0x111000UL,
+		0x112000UL,
+		0x113000UL,
 	};
 	unsigned long fetched[ARRAY_SIZE(entries)] = {
-		0xa1a1a1a1a1a1a1a1UL,
-		0xb2b2b2b2b2b2b2b2UL,
-		0xc3c3c3c3c3c3c3c3UL,
+		0xa1a1a1a1UL,
+		0xb2b2b2b2UL,
+		0xc3c3c3c3UL,
 	};
 	unsigned long expected[ARRAY_SIZE(fetched)];
 	depot_stack_handle_t handle;
@@ -94,9 +94,9 @@ static depot_stack_handle_t save_countable(unsigned long *entries, unsigned int 
 static void stackdepot_countable_flag_roundtrip(struct kunit *test)
 {
 	unsigned long entries[] = {
-		0x1234567800210000UL,
-		0x1234567800220000UL,
-		0x1234567800230000UL,
+		0x121000UL,
+		0x122000UL,
+		0x123000UL,
 	};
 	unsigned long fetched[ARRAY_SIZE(entries)] = {};
 	depot_stack_handle_t handle;
@@ -216,9 +216,9 @@ static void stackdepot_snprint_public(struct kunit *test)
 static void stackdepot_get_stack_record(struct kunit *test)
 {
 	unsigned long entries[] = {
-		0x1234567800310000UL,
-		0x1234567800320000UL,
-		0x1234567800330000UL,
+		0x131000UL,
+		0x132000UL,
+		0x133000UL,
 	};
 	struct stack_record *record;
 	depot_stack_handle_t handle;
@@ -237,14 +237,14 @@ static void stackdepot_get_stack_record(struct kunit *test)
 static void stackdepot_countable_does_not_alias_other_modes(struct kunit *test)
 {
 	unsigned long plain_entries[] = {
-		0x1234567800410000UL,
-		0x1234567800420000UL,
-		0x1234567800430000UL,
+		0x141000UL,
+		0x142000UL,
+		0x143000UL,
 	};
 	unsigned long get_entries[] = {
-		0x1234567800510000UL,
-		0x1234567800520000UL,
-		0x1234567800530000UL,
+		0x151000UL,
+		0x152000UL,
+		0x153000UL,
 	};
 	depot_flags_t get = STACK_DEPOT_FLAG_CAN_ALLOC | STACK_DEPOT_FLAG_GET;
 	struct stack_record *record;
@@ -278,7 +278,7 @@ static void stackdepot_countable_does_not_alias_other_modes(struct kunit *test)
 
 static void stackdepot_frame_raw_fallback(struct kunit *test)
 {
-	unsigned long frame = 0xffff888000001000UL;
+	unsigned long frame = 0x1000UL;
 	bool compressed;
 	u32 payload = 0xfeedbeef;
 
