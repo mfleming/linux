@@ -624,7 +624,8 @@ static void test_stackdepot_roundtrip(struct kunit *test)
 	dst_nentries = stack_depot_fetch_into(handle, dst_entries, ARRAY_SIZE(dst_entries));
 	KUNIT_EXPECT_TRUE(test, src_nentries == dst_nentries);
 
-	kmsan_check_memory(dst_entries, sizeof(*dst_entries) * dst_nentries);
+	kmsan_check_memory((void *)dst_entries,
+			   sizeof(*dst_entries) * dst_nentries);
 	KUNIT_EXPECT_TRUE(test, report_matches(&expect));
 }
 
