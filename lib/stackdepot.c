@@ -221,24 +221,25 @@ static u32 trie_side_table_max_id;
  * pool_index_plus_1 > stack_max_pools and reinterpret the remaining handle
  * bits as a dense leaf_id, which the side table maps to a trie leaf.
  */
-static u32 __stack_depot_trie_max_leaf_id(void)
+static u32 __stack_depot_trie_max_leaf_id(unsigned int max_pools)
 {
 	u64 max_id;
 
-	if (stack_max_pools >= DEPOT_POOL_INDEX_MASK - 1)
+	if (max_pools >= DEPOT_POOL_INDEX_MASK - 1)
 		return 0;
 
-	max_id = (u64)(DEPOT_POOL_INDEX_MASK - stack_max_pools - 1) <<
+	max_id = (u64)(DEPOT_POOL_INDEX_MASK - max_pools - 1) <<
 		 DEPOT_OFFSET_BITS;
 	return min_t(u64, max_id, U32_MAX);
 }
 
-static void stack_depot_trie_reserve_handle_space(void)
+static unsigned int stack_depot_trie_hash_max_pools(void)
 {
 	/* Reserve one pool-index value for trie leaf IDs when none is available. */
-	if (stack_depot_trie_requested &&
-	    stack_max_pools >= DEPOT_POOL_INDEX_MASK - 1)
-		stack_max_pools = DEPOT_POOL_INDEX_MASK - 2;
+	if (stack_max_pools >= DEPOT_POOL_INDEX_MASK - 1)
+		return DEPOT_POOL_INDEX_MASK - 2;
+
+	return stack_max_pools;
 }
 
 static depot_stack_handle_t __stack_depot_trie_handle(u32 leaf_id)
@@ -320,8 +321,10 @@ static inline bool __stack_depot_trie_enabled(void)
 	return static_branch_unlikely(&stack_depot_trie_enabled);
 }
 
-static void stack_depot_trie_enable(void)
+static void stack_depot_trie_enable(unsigned int max_pools)
 {
+	/* Commit the handle split only after all trie state is ready. */
+	stack_max_pools = max_pools;
 	static_branch_enable(&stack_depot_trie_enabled);
 }
 
@@ -526,7 +529,8 @@ static inline unsigned int trie_side_table_root_size_for_max_id(u32 max_leaf_id)
 	return DIV_ROUND_UP(top_size, STACK_DEPOT_TRIE_SIDE_TABLE_DIR_SIZE);
 }
 
-static int __init __stack_depot_trie_side_table_init_memblock(void)
+static int __init
+__stack_depot_trie_side_table_init_memblock(unsigned int max_pools)
 {
 	struct stack_depot_trie_side_root *root_vec;
 	struct stack_depot_trie_side_dir *first_dir;
@@ -537,7 +541,7 @@ static int __init __stack_depot_trie_side_table_init_memblock(void)
 	u32 max_leaf_id;
 	unsigned int root_size;
 
-	max_leaf_id = __stack_depot_trie_max_leaf_id();
+	max_leaf_id = __stack_depot_trie_max_leaf_id(max_pools);
 	if (!max_leaf_id)
 		return -EINVAL;
 	root_size = trie_side_table_root_size_for_max_id(max_leaf_id);
@@ -572,14 +576,15 @@ static int __init __stack_depot_trie_side_table_init_memblock(void)
 	return 0;
 }
 
-static int __stack_depot_trie_side_table_init(gfp_t gfp_flags)
+static int __stack_depot_trie_side_table_init(gfp_t gfp_flags,
+					      unsigned int max_pools)
 {
 	struct stack_depot_trie_side_root *root_vec;
 	unsigned int root_size;
 	size_t root_bytes;
 	u32 max_leaf_id;
 
-	max_leaf_id = __stack_depot_trie_max_leaf_id();
+	max_leaf_id = __stack_depot_trie_max_leaf_id(max_pools);
 	if (!max_leaf_id)
 		return -EINVAL;
 
@@ -610,11 +615,13 @@ static void trie_free_object_buckets_init(void)
 static int __init stack_depot_trie_init_memblock(void)
 {
 	struct stack_depot_trie_alloc_workspace *workspace;
+	unsigned int max_pools;
 	size_t size;
 	int ret;
 
 	if (__stack_depot_trie_enabled())
 		return 0;
+	max_pools = stack_depot_trie_hash_max_pools();
 
 	size = sizeof(*stack_depot_trie_workspace);
 	workspace = memblock_alloc(size, __alignof__(*workspace));
@@ -622,7 +629,7 @@ static int __init stack_depot_trie_init_memblock(void)
 		return -ENOMEM;
 	memset(workspace, 0, size);
 
-	ret = __stack_depot_trie_side_table_init_memblock();
+	ret = __stack_depot_trie_side_table_init_memblock(max_pools);
 	if (ret) {
 		memblock_free(workspace, size);
 		return ret;
@@ -630,23 +637,25 @@ static int __init stack_depot_trie_init_memblock(void)
 	stack_depot_trie_workspace = workspace;
 
 	trie_free_object_buckets_init();
-	stack_depot_trie_enable();
+	stack_depot_trie_enable(max_pools);
 	return 0;
 }
 
 static int stack_depot_trie_init(gfp_t gfp_flags)
 {
 	struct stack_depot_trie_alloc_workspace *workspace;
+	unsigned int max_pools;
 	int ret;
 
 	if (__stack_depot_trie_enabled())
 		return 0;
+	max_pools = stack_depot_trie_hash_max_pools();
 
 	workspace = kvzalloc(sizeof(*stack_depot_trie_workspace), gfp_flags);
 	if (!workspace)
 		return -ENOMEM;
 
-	ret = __stack_depot_trie_side_table_init(gfp_flags);
+	ret = __stack_depot_trie_side_table_init(gfp_flags, max_pools);
 	if (ret) {
 		kvfree(workspace);
 		return ret;
@@ -654,7 +663,7 @@ static int stack_depot_trie_init(gfp_t gfp_flags)
 	stack_depot_trie_workspace = workspace;
 
 	trie_free_object_buckets_init();
-	stack_depot_trie_enable();
+	stack_depot_trie_enable(max_pools);
 	return 0;
 }
 
@@ -1373,7 +1382,6 @@ int __init stack_depot_early_init(void)
 	}
 	init_stack_table(entries);
 
-	stack_depot_trie_reserve_handle_space();
 	pr_info("allocating space for %u stack pools via memblock\n",
 		stack_max_pools);
 	stack_pools =
@@ -1440,7 +1448,6 @@ int stack_depot_init(void)
 	stack_hash_mask = entries - 1;
 	init_stack_table(entries);
 
-	stack_depot_trie_reserve_handle_space();
 	pr_info("allocating space for %u stack pools via kvcalloc\n",
 		stack_max_pools);
 	stack_pools = kvcalloc(stack_max_pools, sizeof(void *), GFP_KERNEL);
