@@ -2784,6 +2784,7 @@ unsigned int stack_depot_fetch_into(depot_stack_handle_t handle,
 		return 0;
 	if (stack_depot_disabled)
 		return 0;
+	WARN_ON_ONCE(!entries || !max_entries);
 	if (__stack_depot_trie_leaf_id(handle))
 		return __stack_depot_trie_fetch_handle_into(handle, entries,
 						      max_entries);
