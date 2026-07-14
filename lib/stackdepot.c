@@ -221,7 +221,7 @@ static u32 trie_side_table_max_id;
  * pool_index_plus_1 > stack_max_pools and reinterpret the remaining handle
  * bits as a dense leaf_id, which the side table maps to a trie leaf.
  */
-static u32 __stack_depot_trie_max_leaf_id(void)
+static inline u32 __stack_depot_trie_max_leaf_id(void)
 {
 	u64 max_id;
 
