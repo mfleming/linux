@@ -200,7 +200,7 @@ depot_stack_handle_t stack_depot_save(unsigned long *entries,
  * This function is only for internal purposes. @handle must have been saved
  * with %STACK_DEPOT_FLAG_COUNTABLE.
  *
- * Return: Returns a pointer to a stack_record struct.
+ * Return: Returns a pointer to a stack_record struct
  */
 struct stack_record *__stack_depot_get_stack_record(depot_stack_handle_t handle);
 
