@@ -152,9 +152,8 @@ static inline int stack_depot_early_init(void)	{ return 0; }
  * exclusive with %STACK_DEPOT_FLAG_GET.
  *
  * When trie storage is enabled, persistent non-refcounted saves use trie
- * storage. Constrained callers only look up existing stacks and perform a
- * trylocked recheck; they do not insert a missing stack. Trie failures do not
- * fall back to hash storage.
+ * storage. Constrained callers only look up existing stacks; they do not insert
+ * a missing stack. Trie failures do not fall back to hash storage.
  *
  * If the provided stack trace comes from the interrupt context, only the part
  * up to the interrupt entry is saved.
