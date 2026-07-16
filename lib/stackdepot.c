@@ -463,32 +463,6 @@ static inline size_t trie_side_table_root_bytes(unsigned int root_size)
 	return struct_size_t(struct stack_depot_trie_side_root, dirs, root_size);
 }
 
-static inline size_t trie_side_table_dir_bytes(void)
-{
-	return PAGE_SIZE;
-}
-
-static inline unsigned int trie_side_table_dir_order(void)
-{
-	return get_order(trie_side_table_dir_bytes());
-}
-
-static inline size_t trie_side_table_chunk_bytes(void)
-{
-	return PAGE_SIZE;
-}
-
-static inline unsigned int trie_side_table_chunk_order(void)
-{
-	return get_order(trie_side_table_chunk_bytes());
-}
-
-static void trie_side_table_free_dir(struct stack_depot_trie_side_dir *dir)
-{
-	if (dir)
-		free_pages((unsigned long)dir, trie_side_table_dir_order());
-}
-
 static void trie_side_table_root_init(struct stack_depot_trie_side_root *root_vec,
 				      unsigned int root_size, u32 max_id)
 {
@@ -510,8 +484,6 @@ static int __init __stack_depot_trie_side_table_init_memblock(void)
 	struct stack_depot_trie_side_root *root_vec;
 	struct stack_depot_trie_side_dir *first_dir;
 	const struct stack_depot_trie_node __rcu **first_chunk;
-	size_t dir_bytes;
-	size_t chunk_bytes;
 	size_t root_bytes;
 	u32 max_leaf_id;
 	unsigned int root_size;
@@ -521,26 +493,24 @@ static int __init __stack_depot_trie_side_table_init_memblock(void)
 		return -EINVAL;
 	root_size = trie_side_table_root_size_for_max_id(max_leaf_id);
 	root_bytes = trie_side_table_root_bytes(root_size);
-	dir_bytes = trie_side_table_dir_bytes();
-	chunk_bytes = trie_side_table_chunk_bytes();
 
 	root_vec = memblock_alloc(root_bytes, __alignof__(*root_vec));
 	if (!root_vec)
 		return -ENOMEM;
 	memset(root_vec, 0, root_bytes);
-	first_dir = memblock_alloc(dir_bytes, PAGE_SIZE);
+	first_dir = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
 	if (!first_dir) {
 		memblock_free(root_vec, root_bytes);
 		return -ENOMEM;
 	}
-	memset(first_dir, 0, dir_bytes);
-	first_chunk = memblock_alloc(chunk_bytes, PAGE_SIZE);
+	memset(first_dir, 0, PAGE_SIZE);
+	first_chunk = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
 	if (!first_chunk) {
-		memblock_free(first_dir, dir_bytes);
+		memblock_free(first_dir, PAGE_SIZE);
 		memblock_free(root_vec, root_bytes);
 		return -ENOMEM;
 	}
-	memset(first_chunk, 0, chunk_bytes);
+	memset(first_chunk, 0, PAGE_SIZE);
 
 	trie_side_table_root_init(root_vec, root_size, max_leaf_id);
 	RCU_INIT_POINTER(root_vec->dirs[0], first_dir);
@@ -633,20 +603,12 @@ static int stack_depot_trie_init(gfp_t gfp_flags)
 	return 0;
 }
 
-static void *trie_side_table_alloc_page(gfp_t gfp_flags, unsigned int order)
-{
-	struct page *page;
-
-	page = alloc_pages(gfp_nested_mask(gfp_flags) | __GFP_ZERO,
-			   order);
-	return page ? page_address(page) : NULL;
-}
-
 static int trie_side_table_get_prealloc(gfp_t gfp_flags,
 					struct stack_depot_trie_side_prealloc *prealloc)
 {
 	unsigned long flags;
 
+	gfp_flags = gfp_nested_mask(gfp_flags);
 	raw_spin_lock_irqsave(&trie_side_table_lock, flags);
 	prealloc->dir = trie_side_table_cache.dir;
 	prealloc->chunk = trie_side_table_cache.chunk;
@@ -655,16 +617,12 @@ static int trie_side_table_get_prealloc(gfp_t gfp_flags,
 	raw_spin_unlock_irqrestore(&trie_side_table_lock, flags);
 
 	if (!prealloc->dir) {
-		unsigned int order = trie_side_table_dir_order();
-
-		prealloc->dir = trie_side_table_alloc_page(gfp_flags, order);
+		prealloc->dir = (void *)get_zeroed_page(gfp_flags);
 		if (!prealloc->dir)
 			return -ENOMEM;
 	}
 	if (!prealloc->chunk) {
-		unsigned int order = trie_side_table_chunk_order();
-
-		prealloc->chunk = trie_side_table_alloc_page(gfp_flags, order);
+		prealloc->chunk = (void *)get_zeroed_page(gfp_flags);
 		if (!prealloc->chunk)
 			return -ENOMEM;
 	}
@@ -687,10 +645,10 @@ static void trie_side_table_put_prealloc(struct stack_depot_trie_side_prealloc *
 	}
 	raw_spin_unlock_irqrestore(&trie_side_table_lock, flags);
 
-	trie_side_table_free_dir(prealloc->dir);
+	if (prealloc->dir)
+		free_page((unsigned long)prealloc->dir);
 	if (prealloc->chunk)
-		free_pages((unsigned long)prealloc->chunk,
-			   trie_side_table_chunk_order());
+		free_page((unsigned long)prealloc->chunk);
 	prealloc->dir = NULL;
 	prealloc->chunk = NULL;
 }
