@@ -4,11 +4,16 @@
 #include <linux/array_size.h>
 #include <linux/gfp.h>
 #include <linux/limits.h>
+#include <linux/moduleparam.h>
 #include <linux/stackdepot.h>
 #include <linux/stacktrace.h>
 #include <linux/string.h>
 
 #include <asm/stackdepot.h>
+
+static int expected_trie_pool_limit = -1;
+module_param_named(trie_pool_limit, expected_trie_pool_limit, int, 0);
+MODULE_PARM_DESC(trie_pool_limit, "Expected stackdepot hash/trie pool split");
 
 #ifdef CONFIG_ARM64
 #include <asm/sections.h>
@@ -278,6 +283,7 @@ static void stackdepot_countable_does_not_alias_other_modes(struct kunit *test)
 
 static void stackdepot_trie_topology_roundtrip(struct kunit *test)
 {
+	union handle_parts parts;
 	unsigned long stacks[][3] = {
 		{ 0x201000UL, 0x202000UL },
 		{ 0x201000UL, 0x203000UL },
@@ -289,14 +295,21 @@ static void stackdepot_trie_topology_roundtrip(struct kunit *test)
 	unsigned int nr_entries[] = { 2, 2, 1, 3, 2, 2 };
 	depot_stack_handle_t handles[ARRAY_SIZE(stacks)];
 	unsigned long fetched[ARRAY_SIZE(stacks[0])];
+	u32 pool_index_plus_1;
 	unsigned int i;
 
+	if (expected_trie_pool_limit < 0)
+		kunit_skip(test, "trie pool limit was not provided");
 	KUNIT_ASSERT_EQ(test, stack_depot_init(), 0);
 
 	for (i = 0; i < ARRAY_SIZE(stacks); i++) {
 		handles[i] = stack_depot_save(stacks[i], nr_entries[i], GFP_KERNEL);
 		KUNIT_ASSERT_NE(test, handles[i], (depot_stack_handle_t)0);
 	}
+	parts.handle = handles[0];
+	pool_index_plus_1 = parts.pool_index_plus_1;
+	KUNIT_ASSERT_GT(test, pool_index_plus_1,
+			(u32)expected_trie_pool_limit);
 
 	for (i = 0; i < ARRAY_SIZE(stacks); i++) {
 		memset(fetched, 0, sizeof(fetched));
@@ -311,8 +324,10 @@ static void stackdepot_trie_topology_roundtrip(struct kunit *test)
 
 static void stackdepot_frame_storage_roundtrip(struct kunit *test)
 {
+	union handle_parts parts;
 	unsigned long fetched[3] = {};
 	depot_stack_handle_t handle;
+	u32 pool_index_plus_1;
 	unsigned int nr_entries;
 #if defined(CONFIG_ARM64)
 	unsigned long entries[] = {
@@ -330,9 +345,15 @@ static void stackdepot_frame_storage_roundtrip(struct kunit *test)
 	unsigned long entries[] = { 0x301000UL, 0x302000UL, 0x303000UL };
 #endif
 
+	if (expected_trie_pool_limit < 0)
+		kunit_skip(test, "trie pool limit was not provided");
 	KUNIT_ASSERT_EQ(test, stack_depot_init(), 0);
 	handle = stack_depot_save(entries, ARRAY_SIZE(entries), GFP_KERNEL);
 	KUNIT_ASSERT_NE(test, handle, (depot_stack_handle_t)0);
+	parts.handle = handle;
+	pool_index_plus_1 = parts.pool_index_plus_1;
+	KUNIT_ASSERT_GT(test, pool_index_plus_1,
+			(u32)expected_trie_pool_limit);
 
 	nr_entries = stack_depot_fetch_into(handle, fetched, ARRAY_SIZE(fetched));
 	KUNIT_EXPECT_EQ(test, nr_entries, (unsigned int)ARRAY_SIZE(entries));
