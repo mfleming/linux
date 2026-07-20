@@ -2362,20 +2362,6 @@ static unsigned int trie_size_append_chain(const unsigned long *entries,
 	return nr_nodes;
 }
 
-static int
-trie_pool_alloc_append_chain(struct stack_depot_trie_insert_alloc *alloc,
-			     void **pool_prealloc,
-			     const unsigned long *entries,
-			     unsigned int nr_entries,
-			     size_t slot_array_size)
-{
-	unsigned int nr_nodes;
-
-	nr_nodes = trie_size_append_chain(entries, nr_entries, alloc->node_sizes);
-	return trie_pool_carve(alloc, pool_prealloc, nr_nodes, nr_nodes - 1, 0,
-			       slot_array_size);
-}
-
 static u32
 stack_depot_trie_insert_locked(const struct stack_depot_trie_child_array __rcu **root_slot,
 			       const unsigned long *entries, unsigned int nr_entries,
@@ -2405,13 +2391,16 @@ stack_depot_trie_insert_locked(const struct stack_depot_trie_child_array __rcu *
 	for (;;) {
 		children = trie_load_children_slot(slot);
 		if (!children) {
+			unsigned int nr_nodes;
+
 			new_leaf_id = trie_side_table_prepare_leaf_slot(side_prealloc);
 			if (!new_leaf_id)
 				return 0;
 			slot_array_size = trie_child_array_bytes(1);
-			if (trie_pool_alloc_append_chain(alloc, pool_prealloc,
-							 entries, nr_entries,
-							 slot_array_size))
+			nr_nodes = trie_size_append_chain(entries, nr_entries,
+							  alloc->node_sizes);
+			if (trie_pool_carve(alloc, pool_prealloc, nr_nodes,
+					    nr_nodes - 1, 0, slot_array_size))
 				return 0;
 			slot_array = alloc->slot_array;
 			trie_build_append_chain(parent, new_leaf_id, entries, nr_entries,
@@ -2428,6 +2417,7 @@ stack_depot_trie_insert_locked(const struct stack_depot_trie_child_array __rcu *
 		if (!found) {
 			struct stack_depot_trie_child_array *tail_array;
 			unsigned int capacity;
+			unsigned int nr_nodes;
 			bool tail_append;
 
 			capacity = trie_child_array_capacity(children->nr_children + 1);
@@ -2441,9 +2431,10 @@ stack_depot_trie_insert_locked(const struct stack_depot_trie_child_array __rcu *
 			new_leaf_id = trie_side_table_prepare_leaf_slot(side_prealloc);
 			if (!new_leaf_id)
 				return 0;
-			if (trie_pool_alloc_append_chain(alloc, pool_prealloc,
-							 entries, nr_entries,
-							 slot_array_size))
+			nr_nodes = trie_size_append_chain(entries, nr_entries,
+							  alloc->node_sizes);
+			if (trie_pool_carve(alloc, pool_prealloc, nr_nodes,
+					    nr_nodes - 1, 0, slot_array_size))
 				return 0;
 			trie_build_append_chain(parent, new_leaf_id, entries, nr_entries,
 						alloc->nodes, alloc->chain_arrays,
