@@ -276,6 +276,69 @@ static void stackdepot_countable_does_not_alias_other_modes(struct kunit *test)
 	stack_depot_put(get_handle);
 }
 
+static void stackdepot_trie_topology_roundtrip(struct kunit *test)
+{
+	unsigned long stacks[][3] = {
+		{ 0x201000UL, 0x202000UL },
+		{ 0x201000UL, 0x203000UL },
+		{ 0x201000UL },
+		{ 0x201000UL, 0x203000UL, 0x204000UL },
+		{ 0x201000UL, 0x205000UL },
+		{ 0x201000UL, 0x206000UL },
+	};
+	unsigned int nr_entries[] = { 2, 2, 1, 3, 2, 2 };
+	depot_stack_handle_t handles[ARRAY_SIZE(stacks)];
+	unsigned long fetched[ARRAY_SIZE(stacks[0])];
+	unsigned int i;
+
+	KUNIT_ASSERT_EQ(test, stack_depot_init(), 0);
+
+	for (i = 0; i < ARRAY_SIZE(stacks); i++) {
+		handles[i] = stack_depot_save(stacks[i], nr_entries[i], GFP_KERNEL);
+		KUNIT_ASSERT_NE(test, handles[i], (depot_stack_handle_t)0);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(stacks); i++) {
+		memset(fetched, 0, sizeof(fetched));
+		KUNIT_EXPECT_EQ(test,
+				stack_depot_fetch_into(handles[i], fetched,
+						       ARRAY_SIZE(fetched)),
+				nr_entries[i]);
+		KUNIT_EXPECT_MEMEQ(test, fetched, stacks[i],
+				   nr_entries[i] * sizeof(fetched[0]));
+	}
+}
+
+static void stackdepot_frame_storage_roundtrip(struct kunit *test)
+{
+	unsigned long fetched[3] = {};
+	depot_stack_handle_t handle;
+	unsigned int nr_entries;
+#if defined(CONFIG_ARM64)
+	unsigned long entries[] = {
+		stackdepot_arm64_frame(S32_MIN),
+		0x1000UL,
+		stackdepot_arm64_frame(S32_MAX),
+	};
+#elif defined(CONFIG_X86_64)
+	unsigned long entries[] = {
+		0xffffffff81234567UL,
+		0xffff888000001000UL,
+		0xffffffff89abcdefUL,
+	};
+#else
+	unsigned long entries[] = { 0x301000UL, 0x302000UL, 0x303000UL };
+#endif
+
+	KUNIT_ASSERT_EQ(test, stack_depot_init(), 0);
+	handle = stack_depot_save(entries, ARRAY_SIZE(entries), GFP_KERNEL);
+	KUNIT_ASSERT_NE(test, handle, (depot_stack_handle_t)0);
+
+	nr_entries = stack_depot_fetch_into(handle, fetched, ARRAY_SIZE(fetched));
+	KUNIT_EXPECT_EQ(test, nr_entries, (unsigned int)ARRAY_SIZE(entries));
+	KUNIT_EXPECT_MEMEQ(test, fetched, entries, sizeof(entries));
+}
+
 static void stackdepot_frame_raw_fallback(struct kunit *test)
 {
 	unsigned long frame = 0x1000UL;
@@ -283,10 +346,7 @@ static void stackdepot_frame_raw_fallback(struct kunit *test)
 	u32 payload = 0xfeedbeef;
 
 #ifdef CONFIG_ARM64
-	if ((unsigned long)_text <= ULONG_MAX - ((unsigned long)S32_MAX + 1UL))
-		frame = (unsigned long)_text + (unsigned long)S32_MAX + 1UL;
-	else
-		frame = stackdepot_arm64_frame((long)S32_MIN - 1L);
+	frame = (unsigned long)_text + (unsigned long)S32_MAX + 1UL;
 #endif
 
 	compressed = arch_stack_depot_frame_try_compress(frame, &payload);
@@ -355,6 +415,8 @@ static struct kunit_case stackdepot_test_cases[] = {
 	KUNIT_CASE(stackdepot_snprint_public),
 	KUNIT_CASE(stackdepot_get_stack_record),
 	KUNIT_CASE(stackdepot_countable_does_not_alias_other_modes),
+	KUNIT_CASE(stackdepot_trie_topology_roundtrip),
+	KUNIT_CASE(stackdepot_frame_storage_roundtrip),
 	KUNIT_CASE(stackdepot_frame_raw_fallback),
 #ifdef CONFIG_X86_64
 	KUNIT_CASE(stackdepot_frame_x86_64),
