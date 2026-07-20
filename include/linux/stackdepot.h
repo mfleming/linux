@@ -239,8 +239,9 @@ unsigned int stack_depot_fetch(depot_stack_handle_t handle,
  * example, %CONFIG_STACKDEPOT_MAX_FRAMES or the local stack_trace_save() limit)
  * when losing diagnostics on an undersized buffer would be surprising.
  *
- * A non-zero invalid or post-put @handle is treated like stack_depot_fetch(): it
- * returns 0 and may WARN because such handles indicate a corrupt caller state.
+ * A non-zero invalid @handle, including a post-put handle, may WARN. Its return
+ * value and copied contents are undefined because the record may have been
+ * reused for another stack.
  *
  * Callers must ensure @handle remains valid for the duration of this call.
  * Persistent handles saved without %STACK_DEPOT_FLAG_GET require no extra
@@ -248,8 +249,8 @@ unsigned int stack_depot_fetch(depot_stack_handle_t handle,
  * Callers must not call stack_depot_put() on persistent handles.
  * Racing this helper with stack_depot_put() on the same handle is invalid.
  *
- * Return: Number of frames copied, 0 if @handle is 0 or invalid, stack depot is
- * disabled, or @max_entries is less than the number of stored frames.
+ * Return: Number of frames copied, 0 if @handle is 0, stack depot is disabled,
+ * or @max_entries is less than the number of stored frames.
  */
 unsigned int stack_depot_fetch_into(depot_stack_handle_t handle,
 				    unsigned long *entries,
