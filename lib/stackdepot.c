@@ -30,7 +30,6 @@
 #include <linux/mm.h>
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
-#include <linux/overflow.h>
 #include <linux/poison.h>
 #include <linux/printk.h>
 #include <linux/rculist.h>
@@ -233,11 +232,8 @@ static u32 trie_side_table_max_id;
  */
 static inline u32 __stack_depot_trie_max_leaf_id(void)
 {
-	u64 max_id;
-
-	max_id = (u64)(DEPOT_POOL_INDEX_MASK - stack_max_pools) <<
-		 DEPOT_OFFSET_BITS;
-	return min_t(u64, max_id, U32_MAX);
+	return (DEPOT_POOL_INDEX_MASK - stack_max_pools) <<
+		DEPOT_OFFSET_BITS;
 }
 
 static depot_stack_handle_t __stack_depot_trie_handle(u32 leaf_id)
@@ -266,15 +262,11 @@ static inline bool stack_depot_handle_is_trie(depot_stack_handle_t handle)
 static u32 __stack_depot_trie_leaf_id(depot_stack_handle_t handle)
 {
 	union handle_parts parts = { .handle = handle };
-	u64 leaf_id;
 	u32 pool_delta;
 
 	parts.extra = 0;
 	pool_delta = parts.pool_index_plus_1 - stack_max_pools - 1;
-	leaf_id = ((u64)pool_delta << DEPOT_OFFSET_BITS) + parts.offset + 1;
-	WARN_ON_ONCE(leaf_id > trie_side_table_max_id);
-
-	return leaf_id;
+	return (pool_delta << DEPOT_OFFSET_BITS) + parts.offset + 1;
 }
 
 /*
@@ -340,20 +332,12 @@ static inline size_t trie_node_bytes(const struct stack_depot_frame_run *run)
 		     stack_depot_frame_run_bytes(run), sizeof(unsigned long));
 }
 
-static inline unsigned int trie_child_array_capacity(unsigned int nr_children)
-{
-	return nr_children ? roundup_pow_of_two(nr_children) : 0;
-}
-
 static size_t trie_child_array_bytes(unsigned int capacity)
 {
 	size_t size;
 
 	size = struct_size_t(struct stack_depot_trie_child_array, children,
 			     capacity);
-	if (size == SIZE_MAX)
-		return 0;
-
 	return ALIGN(size, sizeof(unsigned long));
 }
 
@@ -425,8 +409,7 @@ trie_side_table_prepare_leaf_slot(struct stack_depot_trie_side_prealloc *preallo
 
 	raw_spin_lock_irqsave(&trie_side_table_lock, flags);
 	id = trie_side_table_last_leaf_id + 1;
-	/* ID zero wraps the 32-bit counter; max_id is trie handle capacity. */
-	if (!id || id > trie_side_table_max_id)
+	if (id > trie_side_table_max_id)
 		goto out_fail;
 
 	root_vec = trie_side_table_root;
@@ -559,9 +542,6 @@ static int __init stack_depot_trie_init_memblock(void)
 	size_t size;
 	int ret;
 
-	if (__stack_depot_trie_enabled())
-		return 0;
-
 	size = sizeof(*stack_depot_trie_alloc);
 	alloc = memblock_alloc(size, __alignof__(*alloc));
 	if (!alloc)
@@ -688,15 +668,10 @@ static const struct stack_depot_trie_node *__stack_depot_trie_side_table_lookup(
 
 static size_t __stack_depot_trie_pool_alloc_size(size_t size)
 {
-	size_t align = 1UL << DEPOT_STACK_ALIGN;
-	size_t aligned;
-
 	if (WARN_ON_ONCE(!size || size > DEPOT_POOL_SIZE))
 		return 0;
-	if (check_add_overflow(size, align - 1, &aligned))
-		return 0;
-	aligned = ALIGN(size, align);
-	return aligned <= DEPOT_POOL_SIZE ? aligned : 0;
+
+	return ALIGN(size, 1UL << DEPOT_STACK_ALIGN);
 }
 
 static inline size_t trie_object_header_size(void)
@@ -711,9 +686,7 @@ static size_t trie_object_alloc_size(size_t size)
 	size = __stack_depot_trie_pool_alloc_size(size);
 	if (!size)
 		return 0;
-	if (check_add_overflow(trie_object_header_size(), size,
-			       &alloc_size))
-		return 0;
+	alloc_size = trie_object_header_size() + size;
 	return alloc_size <= DEPOT_POOL_SIZE ? alloc_size : 0;
 }
 
@@ -725,9 +698,6 @@ static inline struct stack_depot_trie_free_object *trie_object_header(const void
 static inline unsigned int trie_free_class(size_t size)
 {
 	size = __stack_depot_trie_pool_alloc_size(size);
-	if (!size)
-		return 0;
-
 	return size >> DEPOT_STACK_ALIGN;
 }
 
@@ -984,8 +954,7 @@ static int trie_pool_add_object_size(size_t size, size_t *total)
 	alloc_size = trie_object_alloc_size(size);
 	if (!alloc_size)
 		return -ENOSPC;
-	if (check_add_overflow(*total, alloc_size, total))
-		return -ENOSPC;
+	*total += alloc_size;
 	return *total <= DEPOT_POOL_SIZE ? 0 : -ENOSPC;
 }
 
@@ -1027,8 +996,10 @@ static int trie_pool_carve(struct stack_depot_trie_insert_alloc *alloc,
 		alloc->nodes[i] = trie_pop_free_node(alloc->node_sizes[i]);
 		if (!alloc->nodes[i]) {
 			alloc_size = __stack_depot_trie_pool_alloc_size(alloc->node_sizes[i]);
-			if (!alloc_size || check_add_overflow(total, alloc_size, &total) ||
-			    total > DEPOT_POOL_SIZE)
+			if (!alloc_size)
+				goto out_discard;
+			total += alloc_size;
+			if (total > DEPOT_POOL_SIZE)
 				goto out_discard;
 		}
 	}
@@ -2268,11 +2239,8 @@ stack_depot_trie_lookup(const struct stack_depot_trie_child_array __rcu * const 
 			return NULL;
 
 		node = trie_child_array_load_child(children, slot);
-		if (!node)
-			return NULL;
-
 		matched = __stack_depot_trie_node_match(node, &entries[pos], remaining);
-		if (!matched || matched < node->run.nr_entries)
+		if (matched < node->run.nr_entries)
 			return NULL;
 		pos += matched;
 		if (pos == nr_entries)
@@ -2420,7 +2388,7 @@ stack_depot_trie_insert_locked(const struct stack_depot_trie_child_array __rcu *
 			unsigned int nr_nodes;
 			bool tail_append;
 
-			capacity = trie_child_array_capacity(children->nr_children + 1);
+			capacity = roundup_pow_of_two(children->nr_children + 1);
 			tail_append = pos == children->nr_children &&
 				children->nr_children < children->capacity;
 			slot_array_size = tail_append ? 0 :
@@ -2680,8 +2648,7 @@ void stack_depot_print(depot_stack_handle_t stack)
 		nr_entries = __stack_depot_trie_fetch_handle_into(stack,
 								  trie_entries,
 								  ARRAY_SIZE(trie_entries));
-		if (nr_entries)
-			stack_trace_print(trie_entries, nr_entries, 0);
+		stack_trace_print(trie_entries, nr_entries, 0);
 		return;
 	}
 
@@ -2703,8 +2670,8 @@ int stack_depot_snprint(depot_stack_handle_t handle, char *buf, size_t size,
 		nr_entries = __stack_depot_trie_fetch_handle_into(handle,
 								  trie_entries,
 								  ARRAY_SIZE(trie_entries));
-		return nr_entries ? stack_trace_snprint(buf, size, trie_entries,
-							 nr_entries, spaces) : 0;
+		return stack_trace_snprint(buf, size, trie_entries, nr_entries,
+					   spaces);
 	}
 
 	nr_entries = stack_depot_fetch(handle, &entries);
