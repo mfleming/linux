@@ -81,12 +81,9 @@
 static DEFINE_WW_CLASS(crtc_ww_class);
 
 #if IS_ENABLED(CONFIG_DRM_DEBUG_MODESET_LOCK)
-/* Modeset-lock diagnostics only need a short caller chain. */
-#define DRM_STACK_DEPOT_MAX_FRAMES 8
-
 static noinline depot_stack_handle_t __drm_stack_depot_save(void)
 {
-	unsigned long entries[DRM_STACK_DEPOT_MAX_FRAMES];
+	unsigned long entries[8];
 	unsigned int n;
 
 	n = stack_trace_save(entries, ARRAY_SIZE(entries), 1);
