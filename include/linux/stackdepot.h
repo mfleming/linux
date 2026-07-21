@@ -163,7 +163,7 @@ static inline int stack_depot_early_init(void)	{ return 0; }
  *          this is the case for contexts where neither %GFP_ATOMIC nor
  *          %GFP_NOWAIT can be used (NMI, raw_spin_lock).
  *
- * Return: Handle of the stack struct stored in depot, 0 on failure
+ * Return: Handle of the stack trace stored in depot, 0 on failure
  */
 depot_stack_handle_t stack_depot_save_flags(unsigned long *entries,
 					    unsigned int nr_entries,
@@ -223,7 +223,7 @@ unsigned int stack_depot_fetch(depot_stack_handle_t handle,
 /**
  * stack_depot_fetch_into - Fetch a stack trace into caller-owned storage
  *
- * @handle:	Stack depot handle returned from stack_depot_save()
+ * @handle:	Stack depot handle
  * @entries:	Caller-owned buffer to copy the stack trace into
  * @max_entries:	Number of frames that fit in @entries
  *

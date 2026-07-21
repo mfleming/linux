@@ -289,11 +289,6 @@ static u32 trie_side_table_last_leaf_id;
 
 /* Lock order: writer_lock -> pool_lock -> trie_side_table_lock. */
 
-static inline bool __stack_depot_trie_enabled(void)
-{
-	return static_branch_unlikely(&stack_depot_trie_enabled);
-}
-
 static inline size_t stack_depot_frame_run_entry_bytes(enum stack_depot_frame_mode mode)
 {
 	if (mode == STACK_DEPOT_FRAME_COMPRESSED)
@@ -422,11 +417,6 @@ out:
 	return id;
 }
 
-static inline size_t trie_side_table_root_bytes(unsigned int root_size)
-{
-	return struct_size_t(struct stack_depot_trie_side_root, dirs, root_size);
-}
-
 static void trie_side_table_root_init(struct stack_depot_trie_side_root *root_vec,
 				      unsigned int root_size, u32 max_id)
 {
@@ -456,7 +446,7 @@ static int __init __stack_depot_trie_side_table_init_memblock(void)
 	if (!max_leaf_id)
 		return -EINVAL;
 	root_size = trie_side_table_root_size_for_max_id(max_leaf_id);
-	root_bytes = trie_side_table_root_bytes(root_size);
+	root_bytes = struct_size_t(struct stack_depot_trie_side_root, dirs, root_size);
 
 	root_vec = memblock_alloc(root_bytes, __alignof__(*root_vec));
 	if (!root_vec)
@@ -495,7 +485,7 @@ static int __stack_depot_trie_side_table_init(gfp_t gfp_flags)
 		return -EINVAL;
 
 	root_size = trie_side_table_root_size_for_max_id(max_leaf_id);
-	root_bytes = trie_side_table_root_bytes(root_size);
+	root_bytes = struct_size_t(struct stack_depot_trie_side_root, dirs, root_size);
 	root_vec = kvzalloc(root_bytes, gfp_flags);
 	if (!root_vec)
 		return -ENOMEM;
@@ -532,7 +522,7 @@ static int stack_depot_trie_init(gfp_t gfp_flags)
 	struct stack_depot_trie_insert_alloc *alloc;
 	int ret;
 
-	if (__stack_depot_trie_enabled())
+	if (static_branch_unlikely(&stack_depot_trie_enabled))
 		return 0;
 
 	alloc = kvzalloc(sizeof(*stack_depot_trie_alloc), gfp_flags);
@@ -1613,7 +1603,7 @@ depot_stack_handle_t stack_depot_save_flags(unsigned long *entries,
 		return 0;
 
 	trie_candidate = !(depot_flags & (STACK_DEPOT_FLAG_GET | STACK_DEPOT_FLAG_COUNTABLE)) &&
-		__stack_depot_trie_enabled();
+		static_branch_unlikely(&stack_depot_trie_enabled);
 	if (trie_candidate) {
 		if (nr_entries > CONFIG_STACKDEPOT_MAX_FRAMES)
 			nr_entries = CONFIG_STACKDEPOT_MAX_FRAMES;
