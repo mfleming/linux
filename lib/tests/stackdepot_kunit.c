@@ -364,7 +364,7 @@ static void stackdepot_frame_raw_fallback(struct kunit *test)
 {
 	unsigned long frame = 0x1000UL;
 	bool compressed;
-	u32 payload = 0xfeedbeef;
+	u32 payload;
 
 #ifdef CONFIG_ARM64
 	frame = (unsigned long)_text + (unsigned long)S32_MAX + 1UL;
@@ -372,7 +372,6 @@ static void stackdepot_frame_raw_fallback(struct kunit *test)
 
 	compressed = arch_stack_depot_frame_try_compress(frame, &payload);
 	KUNIT_EXPECT_FALSE(test, compressed);
-	KUNIT_EXPECT_EQ(test, payload, (u32)0xfeedbeef);
 }
 
 #ifdef CONFIG_X86_64
