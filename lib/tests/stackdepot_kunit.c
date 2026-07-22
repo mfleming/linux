@@ -239,9 +239,14 @@ static void stackdepot_trie_topology_roundtrip(struct kunit *test)
 		{ 0x201000UL },
 		{ 0x201000UL, 0x203000UL, 0x204000UL },
 		{ 0x201000UL, 0x205000UL },
+		{ 0x201000UL, 0x204000UL },
 		{ 0x201000UL, 0x206000UL },
+		{ 0x201000UL, 0x207000UL },
+		{ 0x301000UL, 0x302000UL },
+		{ 0x301000UL, 0x302000UL, 0x303000UL },
+		{ 0x301000UL, 0x304000UL },
 	};
-	unsigned int nr_entries[] = { 2, 2, 1, 3, 2, 2 };
+	unsigned int nr_entries[] = { 2, 2, 1, 3, 2, 2, 2, 2, 2, 3, 2 };
 	depot_stack_handle_t handles[ARRAY_SIZE(stacks)];
 	unsigned long fetched[ARRAY_SIZE(stacks[0])];
 	u32 pool_index_plus_1;
@@ -286,9 +291,9 @@ static void stackdepot_frame_storage_roundtrip(struct kunit *test)
 	};
 #elif defined(CONFIG_X86_64)
 	unsigned long entries[] = {
-		0xffffffff81234567UL,
+		0xffffffff10001000UL,
 		0xffff888000001000UL,
-		0xffffffff89abcdefUL,
+		0xffffffff20002000UL,
 	};
 #else
 	unsigned long entries[] = { 0x301000UL, 0x302000UL, 0x303000UL };
