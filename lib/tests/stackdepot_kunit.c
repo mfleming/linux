@@ -93,6 +93,7 @@ static void stackdepot_save_flags_public(struct kunit *test)
 {
 	unsigned long entries[] = { 0x501000UL, 0x502000UL, 0x503000UL };
 	unsigned long get_entries[] = { 0x601000UL, 0x602000UL };
+	unsigned long missing_entries[] = { 0x701000UL, 0x702000UL };
 	unsigned long fetched[ARRAY_SIZE(entries)] = {};
 	depot_stack_handle_t noalloc_handle;
 	depot_stack_handle_t overlong_handle;
@@ -130,6 +131,13 @@ static void stackdepot_save_flags_public(struct kunit *test)
 
 	noalloc_handle = stack_depot_save_flags(entries, ARRAY_SIZE(entries), no_spin, 0);
 	KUNIT_EXPECT_EQ(test, noalloc_handle, plain_handle);
+	if (expected_trie_pool_limit >= 0) {
+		noalloc_handle =
+			stack_depot_save_flags(missing_entries,
+					       ARRAY_SIZE(missing_entries),
+					       no_spin, 0);
+		KUNIT_EXPECT_EQ(test, noalloc_handle, (depot_stack_handle_t)0);
+	}
 
 	get_handle = stack_depot_save_flags(get_entries, ARRAY_SIZE(get_entries),
 					    GFP_KERNEL,
