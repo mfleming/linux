@@ -766,44 +766,6 @@ trie_retire_child_array_with_node(const void *ptr,
 }
 
 /*
- * Preallocate resources that cannot be allocated while trie writers hold raw
- * spinlocks. Side-table growth is mandatory before a new leaf ID can be
- * used, so side-table preallocation failure disables insertion for this
- * save. Pool preallocation is opportunistic: reusable trie slots may still
- * satisfy the insertion, and trie_pool_alloc_insert() reports -ENOSPC if they
- * do not.
- */
-static int
-__stack_depot_trie_alloc_prealloc(gfp_t alloc_flags, void **pool_prealloc,
-				  struct stack_depot_trie_side_prealloc *side_prealloc)
-{
-	unsigned long flags;
-	bool need_pool;
-	int ret;
-
-	raw_spin_lock_irqsave(&pool_lock, flags);
-	need_pool = !new_pool;
-	raw_spin_unlock_irqrestore(&pool_lock, flags);
-	if (need_pool) {
-		struct page *page;
-
-		page = alloc_pages(gfp_nested_mask(alloc_flags), DEPOT_POOL_ORDER);
-		if (page)
-			*pool_prealloc = page_address(page);
-	}
-	ret = trie_side_table_get_prealloc(alloc_flags, side_prealloc);
-
-	if (ret) {
-		if (*pool_prealloc) {
-			free_pages((unsigned long)*pool_prealloc, DEPOT_POOL_ORDER);
-			*pool_prealloc = NULL;
-		}
-		return -ENOSPC;
-	}
-	return 0;
-}
-
-/*
  * Reserve fixed-size pool slots for one trie insertion. If any reservation
  * fails, all slots reserved by this attempt are released locally.
  * The caller must not publish any returned storage before side-table and trie
@@ -1499,42 +1461,34 @@ stack_depot_trie_save(unsigned long *entries, unsigned int nr_entries,
 {
 	struct stack_depot_trie_side_prealloc side_prealloc = {};
 	void *pool_prealloc = NULL;
-	depot_stack_handle_t handle;
+	depot_stack_handle_t handle = 0;
 	unsigned long flags;
-	bool retried = false;
+	bool need_pool;
 	u32 leaf_id;
-	int ret;
 
-retry:
 	handle = trie_find_handle(entries, nr_entries);
 	if (handle)
 		return handle;
 
-	ret = __stack_depot_trie_alloc_prealloc(alloc_flags, &pool_prealloc,
-						&side_prealloc);
-	if (ret)
+	raw_spin_lock_irqsave(&pool_lock, flags);
+	need_pool = !new_pool;
+	raw_spin_unlock_irqrestore(&pool_lock, flags);
+	if (need_pool) {
+		struct page *page;
+
+		page = alloc_pages(gfp_nested_mask(alloc_flags), DEPOT_POOL_ORDER);
+		if (page)
+			pool_prealloc = page_address(page);
+	}
+	if (trie_side_table_get_prealloc(alloc_flags, &side_prealloc))
 		goto out_free;
 
 	raw_spin_lock_irqsave(&stack_depot_trie_writer_lock, flags);
 	leaf_id = stack_depot_trie_insert(entries, nr_entries,
-						 &pool_prealloc, &side_prealloc);
+					       &pool_prealloc, &side_prealloc);
 	if (leaf_id)
 		handle = __stack_depot_trie_handle(leaf_id);
 	raw_spin_unlock_irqrestore(&stack_depot_trie_writer_lock, flags);
-	if (!handle && !retried) {
-		retried = true;
-		if (pool_prealloc) {
-			raw_spin_lock_irqsave(&pool_lock, flags);
-			depot_keep_new_pool(&pool_prealloc);
-			raw_spin_unlock_irqrestore(&pool_lock, flags);
-		}
-		if (pool_prealloc) {
-			free_pages((unsigned long)pool_prealloc, DEPOT_POOL_ORDER);
-			pool_prealloc = NULL;
-		}
-		trie_side_table_put_prealloc(&side_prealloc);
-		goto retry;
-	}
 
 out_free:
 	if (pool_prealloc) {
