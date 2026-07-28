@@ -739,7 +739,7 @@ static void trie_drain_pending_arrays(void)
 	}
 }
 
-static void trie_retire_child_array_locked(const void *ptr)
+static void trie_retire_child_array(const void *ptr)
 {
 	struct stack_depot_trie_retired_array *retired;
 
@@ -759,7 +759,7 @@ trie_retire_child_array_with_node(const void *ptr,
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&pool_lock, flags);
-	trie_retire_child_array_locked(ptr);
+	trie_retire_child_array(ptr);
 	retired = trie_retired_array(ptr);
 	retired->pending_node = (struct stack_depot_trie_node *)node;
 	raw_spin_unlock_irqrestore(&pool_lock, flags);
@@ -1488,7 +1488,7 @@ static inline struct stack_record *find_stack(struct list_head *bucket,
 }
 
 static u32
-stack_depot_trie_insert_locked(const unsigned long *entries,
+stack_depot_trie_insert(const unsigned long *entries,
 			       unsigned int nr_entries,
 			       void **pool_prealloc,
 			       struct stack_depot_trie_side_prealloc *side_prealloc);
@@ -1516,7 +1516,7 @@ retry:
 		goto out_free;
 
 	raw_spin_lock_irqsave(&stack_depot_trie_writer_lock, flags);
-	leaf_id = stack_depot_trie_insert_locked(entries, nr_entries,
+	leaf_id = stack_depot_trie_insert(entries, nr_entries,
 						 &pool_prealloc, &side_prealloc);
 	if (leaf_id)
 		handle = __stack_depot_trie_handle(leaf_id);
@@ -2109,7 +2109,7 @@ static unsigned int trie_size_append_chain(const unsigned long *entries,
 }
 
 static u32
-trie_insert_path_locked(const struct stack_depot_trie_child_array __rcu **slot,
+trie_insert_path(const struct stack_depot_trie_child_array __rcu **slot,
 			 struct stack_depot_trie_node *parent,
 			 const struct stack_depot_trie_child_array *children,
 			 unsigned int pos, const unsigned long *entries,
@@ -2169,7 +2169,7 @@ trie_insert_path_locked(const struct stack_depot_trie_child_array __rcu **slot,
 					   slot_array, capacity);
 		rcu_assign_pointer(*slot, slot_array);
 		raw_spin_lock_irqsave(&pool_lock, flags);
-		trie_retire_child_array_locked(children);
+		trie_retire_child_array(children);
 		raw_spin_unlock_irqrestore(&pool_lock, flags);
 	}
 
@@ -2177,7 +2177,7 @@ trie_insert_path_locked(const struct stack_depot_trie_child_array __rcu **slot,
 }
 
 static u32
-trie_split_child_locked(const struct stack_depot_trie_child_array __rcu **slot,
+trie_split_child(const struct stack_depot_trie_child_array __rcu **slot,
 			const struct stack_depot_trie_child_array *children,
 			const struct stack_depot_trie_node *child,
 			unsigned int pos, unsigned int matched,
@@ -2234,7 +2234,7 @@ trie_split_child_locked(const struct stack_depot_trie_child_array __rcu **slot,
 }
 
 static u32
-trie_promote_child_locked(const struct stack_depot_trie_child_array __rcu **slot,
+trie_promote_child(const struct stack_depot_trie_child_array __rcu **slot,
 			  const struct stack_depot_trie_child_array *children,
 			  const struct stack_depot_trie_node *child,
 			  unsigned int pos, void **pool_prealloc,
@@ -2276,7 +2276,7 @@ static u32 trie_finish_insert(u32 leaf_id)
 }
 
 static u32
-stack_depot_trie_insert_locked(const unsigned long *entries,
+stack_depot_trie_insert(const unsigned long *entries,
 			       unsigned int nr_entries,
 			       void **pool_prealloc,
 			       struct stack_depot_trie_side_prealloc *side_prealloc)
@@ -2294,7 +2294,7 @@ stack_depot_trie_insert_locked(const unsigned long *entries,
 		children = trie_load_children_slot(slot);
 		/* Case 1: no matching child, so append the remaining stack path. */
 		if (!trie_child_array_find_slot(children, entries[0], &pos)) {
-			leaf_id = trie_insert_path_locked(slot, parent, children, pos,
+			leaf_id = trie_insert_path(slot, parent, children, pos,
 							   entries, nr_entries,
 							   pool_prealloc,
 							   side_prealloc);
@@ -2306,7 +2306,7 @@ stack_depot_trie_insert_locked(const unsigned long *entries,
 
 		/* Case 2: the match ends inside the child run, so split it. */
 		if (matched < child->run.nr_entries) {
-			leaf_id = trie_split_child_locked(slot, children, child, pos,
+			leaf_id = trie_split_child(slot, children, child, pos,
 							       matched, entries, nr_entries,
 							       pool_prealloc, side_prealloc);
 			break;
@@ -2316,7 +2316,7 @@ stack_depot_trie_insert_locked(const unsigned long *entries,
 		if (matched == nr_entries) {
 			if (child->leaf_id)
 				return child->leaf_id;
-			leaf_id = trie_promote_child_locked(slot, children, child, pos,
+			leaf_id = trie_promote_child(slot, children, child, pos,
 							       pool_prealloc,
 							       side_prealloc);
 			break;
