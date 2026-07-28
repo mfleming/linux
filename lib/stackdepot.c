@@ -1831,12 +1831,24 @@ trie_child_array_load_child(const struct stack_depot_trie_child_array *array,
 				     rcu_read_lock_sched_held());
 }
 
+/*
+ * Find the child slot for @frame.
+ *
+ * Return true and set @pos to the matching child index when @array contains a
+ * matching child. Return false and set @pos to the insertion index otherwise.
+ * A NULL @array is treated as empty and returns @pos = 0.
+ */
 static bool
 trie_child_array_find_slot(const struct stack_depot_trie_child_array *array,
 			   unsigned long frame, unsigned int *pos)
 {
 	unsigned int left = 0;
 	unsigned int right;
+
+	if (!array) {
+		*pos = 0;
+		return false;
+	}
 
 	right = READ_ONCE(array->nr_children);
 	while (left < right) {
@@ -2001,8 +2013,6 @@ stack_depot_trie_lookup(const unsigned long *entries, unsigned int nr_entries)
 		unsigned int matched;
 		unsigned int slot;
 
-		if (!children)
-			return NULL;
 		if (!trie_child_array_find_slot(children, entries[pos], &slot))
 			return NULL;
 
@@ -2099,7 +2109,7 @@ static unsigned int trie_size_append_chain(const unsigned long *entries,
 }
 
 static u32
-trie_insert_child_locked(const struct stack_depot_trie_child_array __rcu **slot,
+trie_insert_path_locked(const struct stack_depot_trie_child_array __rcu **slot,
 			 struct stack_depot_trie_node *parent,
 			 const struct stack_depot_trie_child_array *children,
 			 unsigned int pos, const unsigned long *entries,
@@ -2278,51 +2288,48 @@ stack_depot_trie_insert_locked(const unsigned long *entries,
 	struct stack_depot_trie_node *parent = NULL;
 	unsigned int matched;
 	unsigned int pos;
-	u32 leaf_id;
+	u32 leaf_id = 0;
 
 	for (;;) {
 		children = trie_load_children_slot(slot);
-		if (!children) {
-			leaf_id = trie_insert_child_locked(slot, parent, NULL, 0,
-							    entries, nr_entries,
-							    pool_prealloc,
-							    side_prealloc);
-			return trie_finish_insert(leaf_id);
-		}
-
+		/* Case 1: no matching child, so append the remaining stack path. */
 		if (!trie_child_array_find_slot(children, entries[0], &pos)) {
-			leaf_id = trie_insert_child_locked(slot, parent, children, pos,
-							    entries, nr_entries,
-							    pool_prealloc,
-							    side_prealloc);
-			return trie_finish_insert(leaf_id);
+			leaf_id = trie_insert_path_locked(slot, parent, children, pos,
+							   entries, nr_entries,
+							   pool_prealloc,
+							   side_prealloc);
+			break;
 		}
 
 		child = trie_child_array_load_child(children, pos);
 		matched = __stack_depot_trie_node_match(child, entries, nr_entries);
-		if (matched == child->run.nr_entries) {
-			if (matched == nr_entries) {
-				if (child->leaf_id)
-					return child->leaf_id;
-				leaf_id = trie_promote_child_locked(slot, children,
-								       child, pos,
-								       pool_prealloc,
-								       side_prealloc);
-				return trie_finish_insert(leaf_id);
-			}
 
-			parent = (struct stack_depot_trie_node *)child;
-			slot = &parent->children;
-			entries += matched;
-			nr_entries -= matched;
-			continue;
+		/* Case 2: the match ends inside the child run, so split it. */
+		if (matched < child->run.nr_entries) {
+			leaf_id = trie_split_child_locked(slot, children, child, pos,
+							       matched, entries, nr_entries,
+							       pool_prealloc, side_prealloc);
+			break;
 		}
 
-		leaf_id = trie_split_child_locked(slot, children, child, pos,
-						       matched, entries, nr_entries,
-						       pool_prealloc, side_prealloc);
-		return trie_finish_insert(leaf_id);
+		/* Case 3: the input ends here, so reuse or promote this child. */
+		if (matched == nr_entries) {
+			if (child->leaf_id)
+				return child->leaf_id;
+			leaf_id = trie_promote_child_locked(slot, children, child, pos,
+							       pool_prealloc,
+							       side_prealloc);
+			break;
+		}
+
+		/* Case 4: the child matched fully; descend with remaining frames. */
+		parent = (struct stack_depot_trie_node *)child;
+		slot = &parent->children;
+		entries += matched;
+		nr_entries -= matched;
 	}
+
+	return trie_finish_insert(leaf_id);
 }
 
 static unsigned int
