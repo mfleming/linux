@@ -1463,21 +1463,20 @@ stack_depot_trie_save(unsigned long *entries, unsigned int nr_entries,
 	void *pool_prealloc = NULL;
 	depot_stack_handle_t handle = 0;
 	unsigned long flags;
+	struct page *page;
 	u32 leaf_id;
 
 	handle = trie_find_handle(entries, nr_entries);
 	if (handle)
 		return handle;
 
-	if (!READ_ONCE(new_pool)) {
-		struct page *page;
-
-		page = alloc_pages(gfp_nested_mask(alloc_flags), DEPOT_POOL_ORDER);
-		if (page)
-			pool_prealloc = page_address(page);
-	}
 	if (trie_side_table_get_prealloc(alloc_flags, &side_prealloc))
-		goto out_free;
+		return 0;
+
+	/* If trie insertion does not consume this page, keep it for the next save. */
+	page = alloc_pages(gfp_nested_mask(alloc_flags), DEPOT_POOL_ORDER);
+	if (page)
+		pool_prealloc = page_address(page);
 
 	raw_spin_lock_irqsave(&stack_depot_trie_writer_lock, flags);
 	leaf_id = stack_depot_trie_insert(entries, nr_entries,
@@ -1486,7 +1485,6 @@ stack_depot_trie_save(unsigned long *entries, unsigned int nr_entries,
 		handle = __stack_depot_trie_handle(leaf_id);
 	raw_spin_unlock_irqrestore(&stack_depot_trie_writer_lock, flags);
 
-out_free:
 	if (pool_prealloc) {
 		raw_spin_lock_irqsave(&pool_lock, flags);
 		depot_keep_new_pool(&pool_prealloc);
