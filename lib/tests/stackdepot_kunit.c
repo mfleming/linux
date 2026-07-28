@@ -336,7 +336,7 @@ static void stackdepot_frame_raw_fallback(struct kunit *test)
 	KUNIT_EXPECT_FALSE(test, compressed);
 }
 
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) && !defined(CONFIG_UML)
 static void stackdepot_frame_x86_64(struct kunit *test)
 {
 	unsigned long direct_map = 0xffff888000001000UL;
@@ -354,7 +354,7 @@ static void stackdepot_frame_x86_64(struct kunit *test)
 	compressed = arch_stack_depot_frame_try_compress(direct_map, &low);
 	KUNIT_EXPECT_FALSE(test, compressed);
 }
-#endif /* CONFIG_X86_64 */
+#endif /* CONFIG_X86_64 && !CONFIG_UML */
 
 #ifdef CONFIG_ARM64
 static void stackdepot_frame_arm64(struct kunit *test)
@@ -398,7 +398,7 @@ static struct kunit_case stackdepot_test_cases[] = {
 	KUNIT_CASE(stackdepot_trie_topology_roundtrip),
 	KUNIT_CASE(stackdepot_frame_storage_roundtrip),
 	KUNIT_CASE(stackdepot_frame_raw_fallback),
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) && !defined(CONFIG_UML)
 	KUNIT_CASE(stackdepot_frame_x86_64),
 #endif
 #ifdef CONFIG_ARM64
