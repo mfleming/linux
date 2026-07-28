@@ -1463,17 +1463,13 @@ stack_depot_trie_save(unsigned long *entries, unsigned int nr_entries,
 	void *pool_prealloc = NULL;
 	depot_stack_handle_t handle = 0;
 	unsigned long flags;
-	bool need_pool;
 	u32 leaf_id;
 
 	handle = trie_find_handle(entries, nr_entries);
 	if (handle)
 		return handle;
 
-	raw_spin_lock_irqsave(&pool_lock, flags);
-	need_pool = !new_pool;
-	raw_spin_unlock_irqrestore(&pool_lock, flags);
-	if (need_pool) {
+	if (!READ_ONCE(new_pool)) {
 		struct page *page;
 
 		page = alloc_pages(gfp_nested_mask(alloc_flags), DEPOT_POOL_ORDER);
